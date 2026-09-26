@@ -1,0 +1,57 @@
+# Booster bundle detector, packaged as a Vercel Function (container image).
+#
+# Vercel auto-detects this file at the project root, builds it, pushes it
+# to Vercel Container Registry, and serves it from a Function on Fluid
+# Compute -- same git-push workflow / preview deployments as everything
+# else on Vercel. No vercel.json needed for this.
+#
+# Folder layout expected alongside this file (same as the Lambda build):
+#   Dockerfile.vercel
+#   requirements.txt
+#   booster_api.py
+#   data/boosterbundle.json
+#   model/booster_bundles.onnx
+#
+# Local test before pushing:
+#   docker build -f Dockerfile.vercel -t booster-api .
+#   docker run -p 8000:8000 -e PORT=8000 booster-api
+#   curl -X POST -F "file=@photo.jpg" http://127.0.0.1:8000/detect
+
+FROM python:3.12-slim
+
+# opencv-python-headless still dynamically links a couple of GL/X11-adjacent
+# system libraries even without GUI support -- without these, `import cv2`
+# fails at startup with "libGL.so.1: cannot open shared object file".
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Ultralytics (and matplotlib, pulled in transitively) try to write a
+# config/cache file on import. Give them a writable dir so a read-only or
+# unexpected filesystem layout doesn't crash startup.
+ENV YOLO_CONFIG_DIR=/tmp/Ultralytics
+ENV MPLCONFIGDIR=/tmp/matplotlib
+
+WORKDIR /app
+
+# Default inference config -- overridable per-deployment via Vercel's
+# environment variables without rebuilding the image.
+ENV BOOSTER_WEIGHTS=/app/model/booster_bundles.onnx
+ENV BOOSTER_CATALOG=/app/data/boosterbundle.json
+ENV BOOSTER_CONF=0.25
+ENV BOOSTER_IMGSZ=640
+ENV BOOSTER_DEVICE=cpu
+
+# Use requirements.txt, not requirements-lambda.txt -- no Mangum needed
+# here since we run a plain HTTP server instead of a Lambda handler.
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Model weights + catalog baked into the image so cold starts never hit
+# the network. Re-build and re-push whenever you retrain.
+COPY booster_api.py .
+COPY data/boosterbundle.json data/boosterbundle.json
+COPY model/booster_bundles.onnx model/booster_bundles.onnx
+
+# Vercel injects $PORT at runtime and expects the server to listen on it.
+CMD ["sh", "-c", "uvicorn booster_api:app --host 0.0.0.0 --port ${PORT:-8000}"]

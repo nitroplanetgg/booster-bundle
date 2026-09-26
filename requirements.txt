@@ -1,0 +1,16 @@
+# Recognition-only requirements -- for booster_infer.py and booster_api.py.
+# Does NOT include albumentations, which is only needed by the training-side
+# scripts (augment_booster_bundles.py, booster_bundle_label_helper.py,
+# booster_split_dataset.py, booster_train.py).
+
+ultralytics       # provides the YOLO() loader + pre/post-processing (pulls in torch as a dependency -- required even for ONNX inference, since NMS/letterboxing still run through it)
+onnxruntime       # ONNX inference backend, CPU
+opencv-python-headless     # image decode/encode
+numpy
+onnx
+
+# Only needed if serving booster_api.py -- omit these if you're only ever
+# running booster_infer.py from the command line.
+fastapi
+uvicorn
+python-multipart
