@@ -42,6 +42,12 @@ ENV BOOSTER_CONF=0.25
 ENV BOOSTER_IMGSZ=640
 ENV BOOSTER_DEVICE=cpu
 
+# ultralytics depends on torch, and a plain `pip install torch` on Linux
+# defaults to the CUDA build (~2GB of unused NVIDIA libs on this
+# GPU-less container). Install the CPU-only wheel first so pip sees
+# torch already satisfied and skips the CUDA build entirely.
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch torchvision
+
 # Use requirements.txt, not requirements-lambda.txt -- no Mangum needed
 # here since we run a plain HTTP server instead of a Lambda handler.
 COPY requirements.txt .
